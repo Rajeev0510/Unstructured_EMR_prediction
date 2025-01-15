@@ -1,0 +1,6 @@
+Patient_ID,Age,Gender,Ethnicity,Diagnosis,Allergies,Heart_Rate,Blood_Pressure,Medications,Lab_Results,Last_Visit_Date,Follow_Up_Required
+1,25,Male,Caucasian,Hypertension,None,72,120/80,Lisinopril,Normal,2024-12-01,True
+2,34,Female,Asian,Diabetes,Peanuts,88,140/90,Metformin,High Glucose,2024-11-20,True
+3,45,Female,Hispanic,COPD,Penicillin,95,130/85,Albuterol,Abnormal Lung Function,2024-12-05,True
+4,56,Male,African American,Arthritis,None,76,125/82,Ibuprofen,Normal,2024-11-30,False
+5,63,Female,Caucasian,Hyperlipidemia,Sulfa drugs,84,150/95,Atorvastatin,High Cholesterol,2024-12-15,True
