@@ -3,5 +3,6 @@ pandas
 numpy
 matplotlib
 seaborn
-mysql-connector-python
-joblibpython-docx
+spacy
+python-docx
+scikit-learn
