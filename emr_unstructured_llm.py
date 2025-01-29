@@ -1,109 +1,147 @@
-import pandas as pd
 import streamlit as st
+import pandas as pd
+import re
 import spacy
 from docx import Document
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
 
-# Ensure that the 'spacy' library is installed and the 'en_core_web_sm' model is downloaded.
-# Run 'pip install spacy' and 'python -m spacy download en_core_web_sm' if not already installed.
+# Load NLP model
 nlp = spacy.load("en_core_web_sm")
 
-# Function to read text from a Word document
-def read_word_file(uploaded_file):
-    doc = Document(uploaded_file)
-    patients_data = []
-    for paragraph in doc.paragraphs:
-        text = paragraph.text.strip()
-        if text:
-            # Assume each paragraph corresponds to one patient's data
-            patients_data.append(text)
-    return patients_data
-
-# Add predictions and recommendations
-def add_predictions(data):
-    predictions = []
-    recommendations = []
-    for _, row in data.iterrows():
-        fetal_health = "Normal" if row.get("Hemoglobin", "normal") == "normal" else "At Risk"
-        gestational_term = "Full Term" if row.get("Gestational Age") and int(row["Gestational Age"] or 0) >= 37 else "Preterm"
-
-        # Generate recommendations based on predictions
-        recommendation = []
-        if fetal_health == "At Risk":
-            recommendation.append("Monitor fetal health closely and consult a specialist.")
-        if gestational_term == "Preterm":
-            recommendation.append("Schedule regular prenatal visits to monitor progression.")
-        if fetal_health == "Normal" and gestational_term == "Full Term":
-            recommendation.append("Maintain a healthy diet and follow standard prenatal care.")
-        
-        predictions.append({
-            "Fetal Health": fetal_health, 
-            "Gestational Term": gestational_term
-        })
-        recommendations.append(" ".join(recommendation))
+# Function to extract structured data from the DOCX file
+def extract_emr_data(doc_file):
+    doc = Document(doc_file)
+    text = [p.text for p in doc.paragraphs if p.text.strip()]
     
-    predictions_df = pd.DataFrame(predictions)
-    recommendations_df = pd.DataFrame({"Recommendations": recommendations})
-    return pd.concat([data, predictions_df, recommendations_df], axis=1)
+    patients = []
+    patient_data = {}
+    
+    for line in text:
+        if line.startswith("Patient "):  # New patient section
+            if patient_data:
+                patients.append(patient_data)
+            patient_data = {}
+        else:
+            key_val = line.split(": ", 1)
+            if len(key_val) == 2:
+                key, val = key_val
+                patient_data[key.strip()] = val.strip()
+    
+    if patient_data:
+        patients.append(patient_data)
+    
+    return pd.DataFrame(patients)
 
-# Streamlit app
-def main():
-    st.title("Predict Patient's EMR Data")
+# Function to extract structured data from manual input text
+def extract_text_input(input_text):
+    patients_data = []
+    for entry in input_text.split("\n\n"):  # Assume each entry is separated by a blank line
+        lines = entry.split(". ")
+        patient_info = {}
+        try:
+            for line in lines:
+                if "year-old" in line:
+                    age_str = line.split("-year-old")[0].strip()
+                    if age_str.isdigit():
+                        patient_info["Age"] = int(age_str)
+                if "weeks gestation" in line:
+                    gest_age_str = line.split(" weeks gestation")[0].split()[-1]
+                    if gest_age_str.isdigit():
+                        patient_info["Gestational Age"] = int(gest_age_str)
+                if "hemoglobin" in line:
+                    try:
+                        patient_info["Hemoglobin"] = float(line.split("hemoglobin at ")[1].split(" g/dL")[0])
+                    except:
+                        patient_info["Hemoglobin"] = None
+                if "blood pressure" in line:
+                    patient_info["Blood Pressure"] = line.split("blood pressure (")[1].split(")")[0]
+                if "medications include" in line:
+                    patient_info["Medications"] = line.split("medications include ")[1].split(".")[0]
+            if patient_info:
+                patients_data.append(patient_info)
+        except Exception as e:
+            st.warning(f"Error processing entry: {entry} | Error: {e}")
+    
+    return pd.DataFrame(patients_data) if patients_data else pd.DataFrame()
 
-    # Text input option
-    st.subheader("Enter EMR Notes")
-    input_text = st.text_area("Input EMR notes here:")
+# Function to categorize risk level
+def categorize_risk(row):
+    if row.get("Hemoglobin") and row["Hemoglobin"] < 11:
+        return "High"
+    if row.get("Gestational Age") and row["Gestational Age"] < 37:
+        return "Preterm Risk"
+    return "Low"
 
-    # File upload options
-    st.subheader("Upload EMR Data")
-    uploaded_file = st.file_uploader("Upload a .docx file", type=["docx"])
+# Function to generate health suggestions
+def generate_suggestions(row):
+    suggestions = []
+    
+    if row["Risk Level"] == "High":
+        suggestions.append("Monitor fetal health closely and consult a specialist.")
+    if row["Risk Level"] == "Preterm Risk":
+        suggestions.append("Schedule regular prenatal visits to monitor progression.")
+    if row["Risk Level"] == "Low":
+        suggestions.append("Maintain a healthy diet and follow standard prenatal care.")
+    
+    if row.get("Hemoglobin") and row["Hemoglobin"] < 11:
+        suggestions.append("Consider iron supplements and iron-rich foods.")
+    
+    if row.get("Gestational Age") and row["Gestational Age"] < 37:
+        suggestions.append("Ensure adequate hydration and rest.")
+    
+    return " | ".join(suggestions)
 
-    if input_text:
-        # Process text input
-        structured_data = pd.DataFrame([{  # Example structured format
-            "Age": 30,
-            "Gestational Age": 32,
-            "Hemoglobin": "normal"
-        }])
-        results = add_predictions(structured_data)
+# Streamlit App
+st.title("EMR Data Analysis & Prediction")
 
-        # Display results for text input
+# Manual Data Input
+st.subheader("Enter EMR Notes")
+input_text = st.text_area("Input EMR notes here:")
+
+if input_text:
+    structured_data = extract_text_input(input_text)
+    if not structured_data.empty:
+        structured_data["Risk Level"] = structured_data.apply(categorize_risk, axis=1)
+        structured_data["Health Suggestions"] = structured_data.apply(generate_suggestions, axis=1)
+
         st.subheader("Structured Data with Predictions (Text Input)")
-        st.dataframe(results)
+        st.dataframe(structured_data)
 
-        # Download results for text input
-        csv = results.to_csv(index=False).encode('utf-8')
+        # Download processed data
+        csv = structured_data.to_csv(index=False).encode('utf-8')
         st.download_button(
             label="Download Results as CSV (Text Input)",
             data=csv,
             file_name="emr_predictions_text_input.csv",
             mime="text/csv",
         )
+    else:
+        st.warning("No valid patient data extracted from input. Please check formatting.")
 
-    elif uploaded_file is not None:
-        if uploaded_file.name.endswith(".docx"):
-            patient_notes = read_word_file(uploaded_file)
+# File upload option
+st.subheader("Upload EMR Data")
+uploaded_file = st.file_uploader("Upload a .docx file", type=["docx"])
 
-            # Process multiple patients' data
-            structured_data = pd.DataFrame([{  # Example structured format for each patient
-                "Age": 30 + i,  # Example variation for each patient
-                "Gestational Age": 32 - i,  # Example variation
-                "Hemoglobin": "normal" if i % 2 == 0 else "low"
-            } for i, _ in enumerate(patient_notes)])
+if uploaded_file is not None:
+    emr_df = extract_emr_data(uploaded_file)
+    
+    if emr_df.empty:
+        st.warning("No valid patient data extracted from the document.")
+    else:
+        emr_df["Risk Level"] = emr_df.apply(categorize_risk, axis=1)
+        emr_df["Health Suggestions"] = emr_df.apply(generate_suggestions, axis=1)
 
-            results = add_predictions(structured_data)
+        st.subheader("Structured Data with Predictions (.docx Upload)")
+        st.dataframe(emr_df)
 
-            # Display results for .docx upload
-            st.subheader("Structured Data with Predictions (.docx Upload)")
-            st.dataframe(results)
-
-            # Download results for .docx upload
-            csv = results.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="Download Results as CSV (.docx Upload)",
-                data=csv,
-                file_name="emr_predictions_docx_upload.csv",
-                mime="text/csv",
-            )
-
-if __name__ == "__main__":
-    main()
+        # Download processed data
+        csv = emr_df.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="Download Results as CSV (.docx Upload)",
+            data=csv,
+            file_name="emr_predictions_docx_upload.csv",
+            mime="text/csv",
+        )
