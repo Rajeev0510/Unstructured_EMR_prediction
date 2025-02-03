@@ -2,14 +2,21 @@ import streamlit as st
 import pandas as pd
 import re
 import spacy
+import subprocess
+import sys
 from docx import Document
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 
-# Load NLP model
-nlp = spacy.load("en_core_web_sm")
+# Ensure the SpaCy model is installed
+try:
+    nlp = spacy.load("en_core_web_sm")
+except OSError:
+    st.warning("Downloading SpaCy model (en_core_web_sm). This may take a moment...")
+    subprocess.run([sys.executable, "-m", "spacy", "download", "en_core_web_sm"])
+    nlp = spacy.load("en_core_web_sm")
 
 # Function to extract structured data from the DOCX file
 def extract_emr_data(doc_file):
