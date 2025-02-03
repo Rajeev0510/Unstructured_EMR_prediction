@@ -11,12 +11,11 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 
 # Ensure the SpaCy model is installed
+import spacy
 try:
     nlp = spacy.load("en_core_web_sm")
 except OSError:
-    st.warning("Downloading SpaCy model (en_core_web_sm). This may take a moment...")
-    subprocess.run([sys.executable, "-m", "spacy", "download", "en_core_web_sm"])
-    nlp = spacy.load("en_core_web_sm")
+    nlp = spacy.blank("en")  # Use a blank English model as a fallback
 
 # Function to extract structured data from the DOCX file
 def extract_emr_data(doc_file):
